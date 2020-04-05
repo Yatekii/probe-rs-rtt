@@ -116,7 +116,9 @@ impl<'a> App<'a> {
                     .constraints(constraints)
                     .split(f.size());
 
-                let text = [Text::raw("ctrl + c: quit — F-keys: switch channels")];
+                let text = [Text::raw(
+                    "ctrl + c: quit — F-keys: switch channels — PgUp/PgDown: scroll",
+                )];
                 let mut help_message = Paragraph::new(text.iter());
                 f.render(&mut help_message, chunks[0]);
 
