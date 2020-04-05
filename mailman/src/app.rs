@@ -23,6 +23,7 @@ struct ChannelState {
     number: usize,
     has_down_channel: bool,
     messages: Vec<String>,
+    input: String,
     scroll_offset: usize,
 }
 
@@ -33,6 +34,7 @@ impl ChannelState {
             number,
             has_down_channel,
             messages: Vec::new(),
+            input: String::new(),
             scroll_offset: 0,
         }
     }
@@ -40,7 +42,6 @@ impl ChannelState {
 
 /// App holds the state of the application
 pub struct App<'a> {
-    input: String,
     tabs: Vec<ChannelState>,
     current_tab: usize,
 
@@ -73,7 +74,6 @@ impl<'a> App<'a> {
         }
 
         Self {
-            input: String::new(),
             tabs,
             current_tab: 0,
 
@@ -86,7 +86,7 @@ impl<'a> App<'a> {
     }
 
     pub fn render(&mut self) {
-        let input = &self.input;
+        let input = &self.tabs[self.current_tab].input;
         let messages = self.tabs[self.current_tab].messages.iter().enumerate();
         let tabs = &self.tabs;
         let current_tab = self.current_tab;
@@ -141,7 +141,7 @@ impl<'a> App<'a> {
         write!(
             self.terminal.backend_mut(),
             "{}",
-            Goto(2 + self.input.width() as u16, height - 1)
+            Goto(2 + input.width() as u16, height - 1)
         )
         .unwrap();
         // stdout is buffered, flush it to see the effect immediately when hitting backspace
@@ -161,17 +161,18 @@ impl<'a> App<'a> {
                     false
                 }
                 Key::Char('\n') => {
-                    self.tabs[self.current_tab]
-                        .messages
-                        .push(self.input.drain(..).collect());
+                    // self.rtt.write(
+                    //     self.tabs[self.current_tab].number,
+                    //     self.tabs[self.current_tab].input.drain(..).collect(),
+                    // );
                     false
                 }
                 Key::Char(c) => {
-                    self.input.push(c);
+                    self.tabs[self.current_tab].input.push(c);
                     false
                 }
                 Key::Backspace => {
-                    self.input.pop();
+                    self.tabs[self.current_tab].input.pop();
                     false
                 }
                 _ => false,
