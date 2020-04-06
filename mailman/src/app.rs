@@ -265,12 +265,18 @@ impl<'a> App<'a> {
 
     pub fn push_rtt(&mut self) {
         if self.tabs[self.current_tab].has_down_channel {
-            self.rtt
+            self.tabs[self.current_tab].input += "\n";
+            let written = self
+                .rtt
                 .write(
                     self.tabs[self.current_tab].number,
                     &self.tabs[self.current_tab].input.as_bytes(),
                 )
                 .unwrap();
+            let num = self.tabs[self.current_tab].number;
+            self.tabs[self.current_tab]
+                .messages
+                .push(format!("{:?}/{}", written, num));
             self.tabs[self.current_tab].input.clear();
         }
     }
