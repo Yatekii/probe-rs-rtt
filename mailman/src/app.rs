@@ -238,7 +238,7 @@ impl<'a> App<'a> {
             .extend(split.clone().map(|s| s.to_string()));
 
         if self.tabs[self.current_tab].scroll_offset != 0 {
-            self.tabs[self.current_tab].scroll_offset += split.count() - 1;
+            self.tabs[self.current_tab].scroll_offset += split.count();
         }
     }
 
