@@ -186,16 +186,18 @@ impl App {
             self.tabs[self.current_tab].scroll_offset = message_num - height.min(message_num);
         }
 
-        // Put the cursor back inside the input box
-        let height = self.terminal.size().map(|s| s.height).unwrap_or(1);
-        write!(
-            self.terminal.backend_mut(),
-            "{}",
-            Goto(input.width() as u16 + 1, height)
-        )
-        .unwrap();
-        // stdout is buffered, flush it to see the effect immediately when hitting backspace
-        std::io::stdout().flush().ok();
+        if has_down_channel {
+            // Put the cursor back inside the input box
+            let height = self.terminal.size().map(|s| s.height).unwrap_or(1);
+            write!(
+                self.terminal.backend_mut(),
+                "{}",
+                Goto(input.width() as u16 + 1, height)
+            )
+            .unwrap();
+            // stdout is buffered, flush it to see the effect immediately when hitting backspace
+            std::io::stdout().flush().ok();
+        }
     }
 
     /// Returns true if the application should exit.
