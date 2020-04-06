@@ -1,5 +1,5 @@
 mod app;
-mod util;
+mod event;
 
 use probe_rs::{config::TargetSelector, DebugProbeInfo, Probe};
 use std::collections::BTreeMap;
@@ -111,7 +111,7 @@ fn run() -> i32 {
 
     eprintln!("Attaching to RTT...");
 
-    let mut rtt = match Rtt::attach(&core, &session) {
+    let rtt = match Rtt::attach(&core, &session) {
         Ok(rtt) => rtt,
         Err(err) => {
             eprintln!("Error attaching to RTT: {}", err);

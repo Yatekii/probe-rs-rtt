@@ -1,4 +1,4 @@
-use crate::util::event::{Event, Events};
+use crate::event::{Event, Events};
 use std::io::Write;
 use termion::{
     cursor::Goto,
@@ -10,13 +10,13 @@ use termion::{
 use tui::{
     backend::TermionBackend,
     layout::{Constraint, Direction, Layout},
-    style::{Color, Modifier, Style},
+    style::{Color, Style},
     widgets::{Block, Borders, List, Paragraph, Tabs, Text},
     Terminal,
 };
 use unicode_width::UnicodeWidthStr;
 
-use probe_rs_rtt::{Rtt, RttChannel};
+use probe_rs_rtt::Rtt;
 
 struct ChannelState {
     name: String,
