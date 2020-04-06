@@ -92,7 +92,7 @@ impl<'a> App<'a> {
         let has_down_channel = self.tabs[self.current_tab].has_down_channel;
         let scroll_offset = self.tabs[self.current_tab].scroll_offset;
         let message_num = self.tabs[self.current_tab].messages.len();
-        let messages = self.tabs[self.current_tab].messages.iter().enumerate();
+        let messages = self.tabs[self.current_tab].messages.iter();
         let tabs = &self.tabs;
         let current_tab = self.current_tab;
         let mut height = 0;
@@ -101,16 +101,11 @@ impl<'a> App<'a> {
                 let constraints = if has_down_channel {
                     &[
                         Constraint::Length(1),
-                        Constraint::Length(3),
                         Constraint::Min(1),
-                        Constraint::Length(3),
+                        Constraint::Length(1),
                     ][..]
                 } else {
-                    &[
-                        Constraint::Length(1),
-                        Constraint::Length(3),
-                        Constraint::Min(1),
-                    ][..]
+                    &[Constraint::Length(1), Constraint::Min(1)][..]
                 };
                 let chunks = Layout::default()
                     .direction(Direction::Vertical)
@@ -118,41 +113,29 @@ impl<'a> App<'a> {
                     .constraints(constraints)
                     .split(f.size());
 
-                let text = [Text::raw(
-                    "ctrl + c: quit — F-keys: switch channels — PgUp/PgDown: scroll",
-                )];
-                let mut help_message = Paragraph::new(text.iter());
-                f.render(&mut help_message, chunks[0]);
-
                 let tab_names = tabs.iter().map(|t| t.name.clone()).collect::<Vec<_>>();
                 let mut tabs = Tabs::default()
-                    .block(Block::default().borders(Borders::ALL).title("Channel"))
                     .titles(&tab_names.as_slice())
                     .select(current_tab)
-                    .style(Style::default().fg(Color::Cyan))
-                    .highlight_style(
-                        Style::default()
-                            .fg(Color::Yellow)
-                            .modifier(Modifier::UNDERLINED),
-                    );
-                f.render(&mut tabs, chunks[1]);
+                    .style(Style::default().fg(Color::Black).bg(Color::Magenta))
+                    .highlight_style(Style::default().fg(Color::Yellow).bg(Color::Magenta));
+                f.render(&mut tabs, chunks[0]);
 
-                height = chunks[2].height as usize - 2;
+                height = chunks[1].height as usize;
 
                 let messages = messages
-                    .map(|(i, m)| Text::raw(format!("{}: {}", i, m)))
+                    .map(|m| Text::raw(m))
                     .skip(message_num - (height + scroll_offset).min(message_num))
                     .take(height);
-                let mut messages = List::new(messages)
-                    .block(Block::default().borders(Borders::ALL).title("Messages"));
-                f.render(&mut messages, chunks[2]);
+                let mut messages =
+                    List::new(messages).block(Block::default().borders(Borders::NONE));
+                f.render(&mut messages, chunks[1]);
 
                 if has_down_channel {
                     let text = [Text::raw(input.clone())];
                     let mut input = Paragraph::new(text.iter())
-                        .style(Style::default().fg(Color::Yellow))
-                        .block(Block::default().borders(Borders::ALL).title("Input"));
-                    f.render(&mut input, chunks[3]);
+                        .style(Style::default().fg(Color::Yellow).bg(Color::Blue));
+                    f.render(&mut input, chunks[2]);
                 }
             })
             .unwrap();
@@ -168,7 +151,7 @@ impl<'a> App<'a> {
         write!(
             self.terminal.backend_mut(),
             "{}",
-            Goto(2 + input.width() as u16, height - 1)
+            Goto(input.width() as u16, height)
         )
         .unwrap();
         // stdout is buffered, flush it to see the effect immediately when hitting backspace
@@ -245,10 +228,6 @@ impl<'a> App<'a> {
 
         // Then split the entire new contents.
         let split = incomming.split_terminator('\n');
-
-        if channel == 0 {
-            eprintln!("{:?}", split.clone().collect::<Vec<_>>());
-        }
 
         // Then add all the splits to the linebuffer.
         self.tabs
