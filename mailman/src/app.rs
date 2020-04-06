@@ -23,6 +23,7 @@ struct ChannelState {
     number: usize,
     has_down_channel: bool,
     messages: Vec<String>,
+    last_line_done: bool,
     input: String,
     scroll_offset: usize,
 }
@@ -34,6 +35,7 @@ impl ChannelState {
             number,
             has_down_channel,
             messages: Vec::new(),
+            last_line_done: false,
             input: String::new(),
             scroll_offset: 0,
         }
@@ -234,12 +236,19 @@ impl<'a> App<'a> {
         let mut incomming = String::from_utf8_lossy(&self.rtt_buffer[..count]).to_string();
 
         // Then pop the last stored line from our line buffer if possible and append our new line.
-        if let Some(last_line) = self.tabs[self.current_tab].messages.pop() {
-            incomming = last_line + &incomming;
+        if !self.tabs[self.current_tab].last_line_done {
+            if let Some(last_line) = self.tabs[self.current_tab].messages.pop() {
+                incomming = last_line + &incomming;
+            }
         }
+        self.tabs[self.current_tab].last_line_done = incomming.chars().last().unwrap() == '\n';
 
         // Then split the entire new contents.
-        let split = incomming.split('\n');
+        let split = incomming.split_terminator('\n');
+
+        if channel == 0 {
+            eprintln!("{:?}", split.clone().collect::<Vec<_>>());
+        }
 
         // Then add all the splits to the linebuffer.
         self.tabs
@@ -248,6 +257,7 @@ impl<'a> App<'a> {
             .unwrap()
             .messages
             .extend(split.clone().map(|s| s.to_string()));
+
         if self.tabs[self.current_tab].scroll_offset != 0 {
             self.tabs[self.current_tab].scroll_offset += split.count() - 1;
         }
@@ -257,26 +267,19 @@ impl<'a> App<'a> {
     pub fn poll_rtt(&mut self) {
         let tabs = self.tabs.iter().map(|c| c.number).collect::<Vec<_>>();
         for channel in tabs {
-            if channel == 2 {
-                self.read_rtt_channel(channel);
-            }
+            self.read_rtt_channel(channel);
         }
     }
 
     pub fn push_rtt(&mut self) {
         if self.tabs[self.current_tab].has_down_channel {
             self.tabs[self.current_tab].input += "\n";
-            let written = self
-                .rtt
+            self.rtt
                 .write(
                     self.tabs[self.current_tab].number,
                     &self.tabs[self.current_tab].input.as_bytes(),
                 )
                 .unwrap();
-            let num = self.tabs[self.current_tab].number;
-            self.tabs[self.current_tab]
-                .messages
-                .push(format!("{:?}/{}", written, num));
             self.tabs[self.current_tab].input.clear();
         }
     }
