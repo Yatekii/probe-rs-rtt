@@ -14,6 +14,9 @@ pub trait RttChannel {
     /// Returns the name of the channel or `None` if there is none.
     fn name(&self) -> Option<&str>;
 
+    /// Returns the number of the channel.
+    fn number(&self) -> usize;
+
     /// Returns the buffer size in bytes. Note that the usable size is one byte less due to how the
     /// ring buffer is implemented.
     fn buffer_size(&self) -> usize;
@@ -86,6 +89,10 @@ impl Channel {
 
     pub fn name(&self) -> Option<&str> {
         self.name.as_ref().map(|s| s.as_ref())
+    }
+
+    pub fn number(&self) -> usize {
+        self.number
     }
 
     pub fn buffer_size(&self) -> usize {
@@ -254,6 +261,11 @@ impl RttChannel for UpChannel {
     fn name(&self) -> Option<&str> {
         self.0.name()
     }
+
+    fn number(&self) -> usize {
+        self.0.number()
+    }
+
     fn buffer_size(&self) -> usize {
         self.0.buffer_size()
     }
@@ -350,6 +362,11 @@ impl RttChannel for DownChannel {
     fn name(&self) -> Option<&str> {
         self.0.name()
     }
+
+    fn number(&self) -> usize {
+        self.0.number()
+    }
+
     fn buffer_size(&self) -> usize {
         self.0.buffer_size()
     }

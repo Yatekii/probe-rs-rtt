@@ -1,5 +1,5 @@
 use crate::event::{Event, Events};
-use std::io::Write;
+use std::{collections::BTreeMap, io::Write};
 use termion::{
     cursor::Goto,
     event::Key,
@@ -16,47 +16,91 @@ use tui::{
 };
 use unicode_width::UnicodeWidthStr;
 
-use probe_rs_rtt::Rtt;
+use probe_rs_rtt::{DownChannel, UpChannel};
 
 struct ChannelState {
-    name: String,
-    number: usize,
-    has_down_channel: bool,
+    up_channel: UpChannel,
+    down_channel: Option<DownChannel>,
     messages: Vec<String>,
     last_line_done: bool,
     input: String,
     scroll_offset: usize,
+    rtt_buffer: [u8; 1024],
 }
 
 impl ChannelState {
-    pub fn new(name: impl Into<String>, number: usize, has_down_channel: bool) -> Self {
+    pub fn new(up_channel: UpChannel, down_channel: Option<DownChannel>) -> Self {
         Self {
-            name: name.into(),
-            number,
-            has_down_channel,
+            up_channel,
+            down_channel,
             messages: Vec::new(),
             last_line_done: false,
             input: String::new(),
             scroll_offset: 0,
+            rtt_buffer: [0u8; 1024],
+        }
+    }
+
+    /// Polls the RTT target for new data on the specified channel.
+    ///
+    /// Processes all the new data and adds it to the linebuffer of the respective channel.
+    fn poll_rtt(&mut self) {
+        // TODO: Proper error handling.
+        let count = match self.up_channel.read(self.rtt_buffer.as_mut()) {
+            Ok(count) => count,
+            Err(err) => {
+                eprintln!("\nError reading from RTT: {}", err);
+                return;
+            }
+        };
+
+        if count == 0 {
+            return;
+        }
+
+        // First, convert the incomming bytes to UTF8.
+        let mut incomming = String::from_utf8_lossy(&self.rtt_buffer[..count]).to_string();
+
+        // Then pop the last stored line from our line buffer if possible and append our new line.
+        if !self.last_line_done {
+            if let Some(last_line) = self.messages.pop() {
+                incomming = last_line + &incomming;
+            }
+        }
+        self.last_line_done = incomming.chars().last().unwrap() == '\n';
+
+        // Then split the entire new contents.
+        let split = incomming.split_terminator('\n');
+
+        // Then add all the splits to the linebuffer.
+        self.messages.extend(split.clone().map(|s| s.to_string()));
+
+        if self.scroll_offset != 0 {
+            self.scroll_offset += split.count();
+        }
+    }
+
+    pub fn push_rtt(&mut self) {
+        if let Some(down_channel) = self.down_channel.as_mut() {
+            self.input += "\n";
+            down_channel.write(&self.input.as_bytes()).unwrap();
+            self.input.clear();
         }
     }
 }
 
 /// App holds the state of the application
-pub struct App<'a> {
+pub struct App {
     tabs: Vec<ChannelState>,
     current_tab: usize,
 
     terminal:
         Terminal<TermionBackend<AlternateScreen<MouseTerminal<RawTerminal<std::io::Stdout>>>>>,
     events: Events,
-
-    rtt: Rtt<'a>,
-    rtt_buffer: [u8; 1024],
 }
 
-impl<'a> App<'a> {
-    pub fn new(rtt: Rtt<'a>, channels: (Vec<usize>, Vec<usize>)) -> Self {
+impl App {
+    pub fn new(mut channels: (BTreeMap<usize, UpChannel>, BTreeMap<usize, DownChannel>)) -> Self {
         let stdout = std::io::stdout().into_raw_mode().unwrap();
         let stdout = MouseTerminal::from(stdout);
         let stdout = AlternateScreen::from(stdout);
@@ -67,12 +111,8 @@ impl<'a> App<'a> {
 
         let mut tabs = Vec::with_capacity(channels.0.len());
 
-        for channel in channels.0 {
-            tabs.push(ChannelState::new(
-                rtt.up_channels()[&channel].name().unwrap_or("Unknown Name"),
-                channel,
-                channels.1.contains(&channel),
-            ));
+        for (n, channel) in channels.0 {
+            tabs.push(ChannelState::new(channel, channels.1.remove(&n)));
         }
 
         Self {
@@ -81,15 +121,12 @@ impl<'a> App<'a> {
 
             terminal,
             events,
-
-            rtt,
-            rtt_buffer: [0u8; 1024],
         }
     }
 
     pub fn render(&mut self) {
         let input = self.tabs[self.current_tab].input.clone();
-        let has_down_channel = self.tabs[self.current_tab].has_down_channel;
+        let has_down_channel = self.tabs[self.current_tab].down_channel.is_some();
         let scroll_offset = self.tabs[self.current_tab].scroll_offset;
         let message_num = self.tabs[self.current_tab].messages.len();
         let messages = self.tabs[self.current_tab].messages.iter();
@@ -113,7 +150,10 @@ impl<'a> App<'a> {
                     .constraints(constraints)
                     .split(f.size());
 
-                let tab_names = tabs.iter().map(|t| t.name.clone()).collect::<Vec<_>>();
+                let tab_names = tabs
+                    .iter()
+                    .map(|t| t.up_channel.name().unwrap_or("Unnamed Channel"))
+                    .collect::<Vec<_>>();
                 let mut tabs = Tabs::default()
                     .titles(&tab_names.as_slice())
                     .select(current_tab)
@@ -151,7 +191,7 @@ impl<'a> App<'a> {
         write!(
             self.terminal.backend_mut(),
             "{}",
-            Goto(input.width() as u16, height)
+            Goto(input.width() as u16 + 1, height)
         )
         .unwrap();
         // stdout is buffered, flush it to see the effect immediately when hitting backspace
@@ -198,68 +238,14 @@ impl<'a> App<'a> {
         }
     }
 
-    /// Polls the RTT target for new data on the specified channel.
-    ///
-    /// Processes all the new data and adds it to the linebuffer of the respective channel.
-    pub fn read_rtt_channel(&mut self, channel: usize) {
-        // TODO: Proper error handling.
-        let count = match self.rtt.read(channel, self.rtt_buffer.as_mut()) {
-            Ok(count) => count,
-            Err(err) => {
-                eprintln!("\nError reading from RTT: {}", err);
-                return;
-            }
-        };
-
-        if count == 0 {
-            return;
-        }
-
-        // First, convert the incomming bytes to UTF8.
-        let mut incomming = String::from_utf8_lossy(&self.rtt_buffer[..count]).to_string();
-
-        // Then pop the last stored line from our line buffer if possible and append our new line.
-        if !self.tabs[self.current_tab].last_line_done {
-            if let Some(last_line) = self.tabs[self.current_tab].messages.pop() {
-                incomming = last_line + &incomming;
-            }
-        }
-        self.tabs[self.current_tab].last_line_done = incomming.chars().last().unwrap() == '\n';
-
-        // Then split the entire new contents.
-        let split = incomming.split_terminator('\n');
-
-        // Then add all the splits to the linebuffer.
-        self.tabs
-            .iter_mut()
-            .find(|t| t.number == channel)
-            .unwrap()
-            .messages
-            .extend(split.clone().map(|s| s.to_string()));
-
-        if self.tabs[self.current_tab].scroll_offset != 0 {
-            self.tabs[self.current_tab].scroll_offset += split.count();
-        }
-    }
-
     /// Polls the RTT target for new data on all channels.
     pub fn poll_rtt(&mut self) {
-        let tabs = self.tabs.iter().map(|c| c.number).collect::<Vec<_>>();
-        for channel in tabs {
-            self.read_rtt_channel(channel);
+        for channel in &mut self.tabs {
+            channel.poll_rtt();
         }
     }
 
     pub fn push_rtt(&mut self) {
-        if self.tabs[self.current_tab].has_down_channel {
-            self.tabs[self.current_tab].input += "\n";
-            self.rtt
-                .write(
-                    self.tabs[self.current_tab].number,
-                    &self.tabs[self.current_tab].input.as_bytes(),
-                )
-                .unwrap();
-            self.tabs[self.current_tab].input.clear();
-        }
+        self.tabs[self.current_tab].push_rtt();
     }
 }

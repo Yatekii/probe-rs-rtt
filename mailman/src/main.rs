@@ -5,7 +5,7 @@ use probe_rs::{config::TargetSelector, DebugProbeInfo, Probe};
 use std::collections::BTreeMap;
 use structopt::StructOpt;
 
-use probe_rs_rtt::{Rtt, RttChannel};
+use probe_rs_rtt::{Channels, DownChannel, Rtt, RttChannel, UpChannel};
 
 #[derive(Debug, StructOpt)]
 #[structopt(
@@ -111,7 +111,7 @@ fn run() -> i32 {
 
     eprintln!("Attaching to RTT...");
 
-    let rtt = match Rtt::attach(&core, &session) {
+    let mut rtt = match Rtt::attach(core, &session) {
         Ok(rtt) => rtt,
         Err(err) => {
             eprintln!("Error attaching to RTT: {}", err);
@@ -129,14 +129,40 @@ fn run() -> i32 {
         return 0;
     }
 
-    let channels: (Vec<usize>, Vec<usize>) = (
+    let channels: (BTreeMap<usize, UpChannel>, BTreeMap<usize, DownChannel>) = (
         opts.up
-            .unwrap_or_else(|| rtt.up_channels().keys().copied().collect()),
+            .map(|up| {
+                up.iter()
+                    .filter_map(|n| rtt.up_channels().take(*n).map(|c| (*n, c)))
+                    .collect()
+            })
+            .unwrap_or_else(|| {
+                rtt.up_channels()
+                    .iter()
+                    .map(|(n, _)| n)
+                    .collect::<Vec<_>>()
+                    .iter()
+                    .filter_map(|n| rtt.up_channels().take(*n).map(|c| (*n, c)))
+                    .collect()
+            }),
         opts.down
-            .unwrap_or_else(|| rtt.down_channels().keys().copied().collect()),
+            .map(|down| {
+                down.iter()
+                    .filter_map(|n| rtt.down_channels().take(*n).map(|c| (*n, c)))
+                    .collect()
+            })
+            .unwrap_or_else(|| {
+                rtt.down_channels()
+                    .iter()
+                    .map(|(n, _)| n)
+                    .collect::<Vec<_>>()
+                    .iter()
+                    .filter_map(|n| rtt.down_channels().take(*n).map(|c| (*n, c)))
+                    .collect()
+            }),
     );
 
-    let mut app = app::App::new(rtt, channels);
+    let mut app = app::App::new(channels);
     loop {
         app.poll_rtt();
         app.render();
@@ -166,7 +192,7 @@ fn list_probes(mut stream: impl std::io::Write, probes: &Vec<DebugProbeInfo>) {
     }
 }
 
-fn list_channels(channels: &BTreeMap<usize, RttChannel>) {
+fn list_channels(channels: &Channels<impl RttChannel>) {
     for (i, chan) in channels.iter() {
         println!(
             "  {}: {} ({} byte buffer)",
