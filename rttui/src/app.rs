@@ -219,42 +219,39 @@ impl App {
     /// Returns true if the application should exit.
     pub fn handle_event(&mut self) -> bool {
         match self.events.next().unwrap() {
-            Event::Input(input) => {
-                eprintln!("{:?}", input);
-                match input {
-                    Key::Ctrl('c') => true,
-                    Key::F(n) => {
-                        let n = n as usize - 1;
-                        if n < self.tabs.len() {
-                            self.current_tab = n as usize;
-                        }
-                        false
+            Event::Input(input) => match input {
+                Key::Ctrl('c') => true,
+                Key::F(n) => {
+                    let n = n as usize - 1;
+                    if n < self.tabs.len() {
+                        self.current_tab = n as usize;
                     }
-                    Key::Char('\n') => {
-                        self.push_rtt();
-                        false
-                    }
-                    Key::Char(c) => {
-                        self.tabs[self.current_tab].input.push(c);
-                        false
-                    }
-                    Key::Backspace => {
-                        self.tabs[self.current_tab].input.pop();
-                        false
-                    }
-                    Key::PageUp => {
-                        self.tabs[self.current_tab].scroll_offset += 1;
-                        false
-                    }
-                    Key::PageDown => {
-                        if self.tabs[self.current_tab].scroll_offset > 0 {
-                            self.tabs[self.current_tab].scroll_offset -= 1;
-                        }
-                        false
-                    }
-                    _ => false,
+                    false
                 }
-            }
+                Key::Char('\n') => {
+                    self.push_rtt();
+                    false
+                }
+                Key::Char(c) => {
+                    self.tabs[self.current_tab].input.push(c);
+                    false
+                }
+                Key::Backspace => {
+                    self.tabs[self.current_tab].input.pop();
+                    false
+                }
+                Key::PageUp => {
+                    self.tabs[self.current_tab].scroll_offset += 1;
+                    false
+                }
+                Key::PageDown => {
+                    if self.tabs[self.current_tab].scroll_offset > 0 {
+                        self.tabs[self.current_tab].scroll_offset -= 1;
+                    }
+                    false
+                }
+                _ => false,
+            },
             _ => false,
         }
     }

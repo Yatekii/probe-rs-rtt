@@ -2,7 +2,7 @@
 members = [
     "probe-rs-rtt",
     "rtthost",
-    "mailman",
+    "rttui",
 ]
 
 [patch.crates-io]
