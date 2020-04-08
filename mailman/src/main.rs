@@ -2,7 +2,6 @@ mod app;
 mod event;
 
 use probe_rs::{config::TargetSelector, DebugProbeInfo, Probe};
-use std::collections::BTreeMap;
 use structopt::StructOpt;
 
 use probe_rs_rtt::{Channels, DownChannel, Rtt, RttChannel, UpChannel};
@@ -129,37 +128,21 @@ fn run() -> i32 {
         return 0;
     }
 
-    let channels: (BTreeMap<usize, UpChannel>, BTreeMap<usize, DownChannel>) = (
+    let channels: (Vec<UpChannel>, Vec<DownChannel>) = (
         opts.up
             .map(|up| {
                 up.iter()
-                    .filter_map(|n| rtt.up_channels().take(*n).map(|c| (*n, c)))
+                    .filter_map(|n| rtt.up_channels().take(*n))
                     .collect()
             })
-            .unwrap_or_else(|| {
-                rtt.up_channels()
-                    .iter()
-                    .map(|(n, _)| n)
-                    .collect::<Vec<_>>()
-                    .iter()
-                    .filter_map(|n| rtt.up_channels().take(*n).map(|c| (*n, c)))
-                    .collect()
-            }),
+            .unwrap_or_else(|| rtt.up_channels().drain().collect()),
         opts.down
             .map(|down| {
                 down.iter()
-                    .filter_map(|n| rtt.down_channels().take(*n).map(|c| (*n, c)))
+                    .filter_map(|n| rtt.down_channels().take(*n))
                     .collect()
             })
-            .unwrap_or_else(|| {
-                rtt.down_channels()
-                    .iter()
-                    .map(|(n, _)| n)
-                    .collect::<Vec<_>>()
-                    .iter()
-                    .filter_map(|n| rtt.down_channels().take(*n).map(|c| (*n, c)))
-                    .collect()
-            }),
+            .unwrap_or_else(|| rtt.down_channels().drain().collect()),
     );
 
     let mut app = app::App::new(channels);
@@ -193,12 +176,12 @@ fn list_probes(mut stream: impl std::io::Write, probes: &Vec<DebugProbeInfo>) {
 }
 
 fn list_channels(channels: &Channels<impl RttChannel>) {
-    for (i, chan) in channels.iter() {
+    for channel in channels.iter() {
         println!(
             "  {}: {} ({} byte buffer)",
-            i,
-            chan.name().as_ref().map(|s| &**s).unwrap_or("(no name)"),
-            chan.buffer_size()
+            channel.number(),
+            channel.name().as_ref().map(|s| &**s).unwrap_or("(no name)"),
+            channel.buffer_size()
         );
     }
 }

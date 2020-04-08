@@ -1,5 +1,5 @@
 use crate::event::{Event, Events};
-use std::{collections::BTreeMap, io::Write};
+use std::io::Write;
 use termion::{
     cursor::Goto,
     event::Key,
@@ -10,7 +10,7 @@ use termion::{
 use tui::{
     backend::TermionBackend,
     layout::{Constraint, Direction, Layout},
-    style::{Color, Style},
+    style::{Color, Modifier, Style},
     widgets::{Block, Borders, List, Paragraph, Tabs, Text},
     Terminal,
 };
@@ -100,7 +100,7 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(mut channels: (BTreeMap<usize, UpChannel>, BTreeMap<usize, DownChannel>)) -> Self {
+    pub fn new(channels: (Vec<UpChannel>, Vec<DownChannel>)) -> Self {
         let stdout = std::io::stdout().into_raw_mode().unwrap();
         let stdout = MouseTerminal::from(stdout);
         let stdout = AlternateScreen::from(stdout);
@@ -111,8 +111,19 @@ impl App {
 
         let mut tabs = Vec::with_capacity(channels.0.len());
 
-        for (n, channel) in channels.0 {
-            tabs.push(ChannelState::new(channel, channels.1.remove(&n)));
+        let up_channels = channels.0;
+        let mut down_channels = channels.1;
+        for channel in up_channels {
+            tabs.push({
+                let c = down_channels.iter().enumerate().find_map(|(i, c)| {
+                    if c.number() == channel.number() {
+                        Some(i)
+                    } else {
+                        None
+                    }
+                });
+                ChannelState::new(channel, c.map(|c| down_channels.remove(c)))
+            });
         }
 
         Self {
@@ -157,8 +168,13 @@ impl App {
                 let mut tabs = Tabs::default()
                     .titles(&tab_names.as_slice())
                     .select(current_tab)
-                    .style(Style::default().fg(Color::Black).bg(Color::Magenta))
-                    .highlight_style(Style::default().fg(Color::Yellow).bg(Color::Magenta));
+                    .style(Style::default().fg(Color::Black).bg(Color::Yellow))
+                    .highlight_style(
+                        Style::default()
+                            .fg(Color::Green)
+                            .bg(Color::Yellow)
+                            .modifier(Modifier::BOLD),
+                    );
                 f.render(&mut tabs, chunks[0]);
 
                 height = chunks[1].height as usize;
@@ -203,39 +219,42 @@ impl App {
     /// Returns true if the application should exit.
     pub fn handle_event(&mut self) -> bool {
         match self.events.next().unwrap() {
-            Event::Input(input) => match input {
-                Key::Ctrl('c') => true,
-                Key::F(n) => {
-                    let n = n as usize - 1;
-                    if n < self.tabs.len() {
-                        self.current_tab = n as usize;
+            Event::Input(input) => {
+                eprintln!("{:?}", input);
+                match input {
+                    Key::Ctrl('c') => true,
+                    Key::F(n) => {
+                        let n = n as usize - 1;
+                        if n < self.tabs.len() {
+                            self.current_tab = n as usize;
+                        }
+                        false
                     }
-                    false
-                }
-                Key::Char('\n') => {
-                    self.push_rtt();
-                    false
-                }
-                Key::Char(c) => {
-                    self.tabs[self.current_tab].input.push(c);
-                    false
-                }
-                Key::Backspace => {
-                    self.tabs[self.current_tab].input.pop();
-                    false
-                }
-                Key::PageUp => {
-                    self.tabs[self.current_tab].scroll_offset += 1;
-                    false
-                }
-                Key::PageDown => {
-                    if self.tabs[self.current_tab].scroll_offset > 0 {
-                        self.tabs[self.current_tab].scroll_offset -= 1;
+                    Key::Char('\n') => {
+                        self.push_rtt();
+                        false
                     }
-                    false
+                    Key::Char(c) => {
+                        self.tabs[self.current_tab].input.push(c);
+                        false
+                    }
+                    Key::Backspace => {
+                        self.tabs[self.current_tab].input.pop();
+                        false
+                    }
+                    Key::PageUp => {
+                        self.tabs[self.current_tab].scroll_offset += 1;
+                        false
+                    }
+                    Key::PageDown => {
+                        if self.tabs[self.current_tab].scroll_offset > 0 {
+                            self.tabs[self.current_tab].scroll_offset -= 1;
+                        }
+                        false
+                    }
+                    _ => false,
                 }
-                _ => false,
-            },
+            }
             _ => false,
         }
     }
